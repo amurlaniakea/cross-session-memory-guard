@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cross-session-memory-guard"
+version = "0.1.0"
+description = "Read-only cross-session memory exfiltration guard for multi-tenant LLM agents. Sensor: observes, compares, alerts — never blocks or modifies memory."
+requires-python = ">=3.11"
+license = "AGPL-3.0-or-later"
+authors = [{ name = "Pedro Sordo Martínez", email = "amurlaniakea@gmail.com" }]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "slow: requires network / external service / live memory engine",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
