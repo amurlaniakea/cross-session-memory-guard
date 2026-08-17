@@ -25,14 +25,24 @@ class FlowGraph:
         (e.g. Engram observations.project/created_at) is the source of
         truth, so a fresh process still sees who wrote each chunk.
         Returns the number of write entries loaded.
+
+        KI-8/KI-4 contract: records with an EMPTY/NULL writer are SKIPPED —
+        an unattributed chunk must stay unknown_chunk (never fire
+        cross_boundary with writer=None systematically over provenance-poor
+        data); the provenance-poor path is decided upstream by the
+        integration, and this skip is the structural belt-and-suspenders.
         """
         n = 0
         for chunk_id, writer in write_records:
+            if not writer:  # no principal label -> never attribute (KI-4/KI-8)
+                continue
             self._writes[chunk_id] = writer
             n += 1
         return n
 
     def record_write(self, principal: str, chunk_id: str) -> None:
+        if not principal:  # same guard as rehydrate (KI-8)
+            return
         self._writes[chunk_id] = principal
 
     def record_read(self, chunk_id: str, reader: str, authorized: bool) -> SignalVerdict:

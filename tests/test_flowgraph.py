@@ -52,3 +52,26 @@ def test_rehydrate_primes_writes_from_engine_metadata():
     v = g.record_read("c1", reader="project-b", authorized=False)
     assert v.fired is True  # writer attribution survives a fresh graph
     assert v.detail["writer"] == "project-a"
+
+
+def test_rehydrate_skips_unattributed_writers():
+    # KI-8 contract (auditor finding): unattributed chunks are NOT recorded
+    # as writes; reads of them stay unknown_chunk and NEVER fire
+    # cross_boundary with writer=None (the 69% provenance-poor bucket must
+    # be inapplicable, not suspicious by default — KI-4).
+    g = FlowGraph()
+    loaded = g.rehydrate([("c1", "project-a"), ("legacy1", None), ("legacy2", "")])
+    assert loaded == 1  # only the attributed pair is recorded
+    assert "legacy1" not in g._writes
+    assert "legacy2" not in g._writes
+    v = g.record_read("legacy1", reader="project-b", authorized=False)
+    assert v.fired is False
+    assert v.detail["reason"] == "unknown_chunk"
+
+
+def test_record_write_ignores_empty_principal():
+    g = FlowGraph()
+    g.record_write(None, "ghost")
+    v = g.record_read("ghost", reader="project-b", authorized=False)
+    assert v.fired is False
+    assert v.detail["reason"] == "unknown_chunk"
