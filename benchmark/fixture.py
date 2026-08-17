@@ -36,6 +36,12 @@ _VOCAB = {
 
 _TIDX = {"alpha": 1, "beta": 2, "gamma": 3}
 
+# Fixture markers/constants: the benchmark runner's ground truth (CSMG-055)
+# references the SAME literals — single source of truth for both files.
+T3_LAUNDER_MARKER = " (consolidated)"
+T2_PLANTED_MARKER = "item 03"
+T4_SECRET = "quarterly revenue gamma 2026 northwind 1.2M euros pipeline capex"
+
 
 def _content(tenant: str, i: int) -> str:
     return (
@@ -105,7 +111,7 @@ def build_sqlite(
     if adversarial == "t3":
         # T3a: label theft — beta content stored under alpha's label (unique
         # marker "consolidated" so the fixture can find it unambiguously)
-        launder = _content("beta", 0) + " (consolidated)"
+        launder = _content("beta", 0) + T3_LAUNDER_MARKER
         con.execute(
             "INSERT INTO mem (id, content, principal_id, scope, created_at)"
             " VALUES (?, ?, 'alpha', 'project', '2026-01-02T00:00:00Z')",
@@ -123,14 +129,13 @@ def build_sqlite(
         # T4: gamma's full secret exists (a normal reference row)...
         con.execute(
             "INSERT INTO mem (id, content, principal_id, scope, created_at)"
-            " VALUES (?, 'quarterly revenue gamma 2026 northwind 1.2M euros pipeline capex',"
-            " 'gamma', 'project', '2026-01-03T00:00:00Z')",
-            (cid,),
+            " VALUES (?, ?, 'gamma', 'project', '2026-01-03T00:00:00Z')",
+            (cid, T4_SECRET),
         )
         cid += 1
         # ...and alpha owns 3 fragments of it (collusion: benign-looking notes
         # that compose the secret; individually below the similarity threshold)
-        secret = "quarterly revenue gamma 2026 northwind 1.2M euros pipeline capex"
+        secret = T4_SECRET
         third = max(1, len(secret) // 3)
         for k in range(3):
             frag = secret[k * third : (k + 1) * third]
@@ -214,7 +219,7 @@ def make_retriever(scenario: str, meta: dict, tenants: list[str] | None = None):
     if scenario == "t2":
         def t2(principal):
             ids = own.get(principal, [])
-            planted = find_row(meta, "beta", "item 03")  # beta's planted row
+            planted = find_row(meta, "beta", T2_PLANTED_MARKER)  # beta's planted row
             if principal == "alpha" and planted and planted not in ids:
                 ids = ids + [planted]
             return ids

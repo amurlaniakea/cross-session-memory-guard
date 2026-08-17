@@ -128,3 +128,45 @@ def test_seed_sweep_consistency():
             assert r["emitted"] == 0, r
         if r["scenario"] == "benign":
             assert r["benign_fp_rate"] <= 0.30, r
+
+
+def test_csmg055_per_signal_tp_fp_fn_against_ground_truth():
+    # CSMG-055: explicit per-signal TP/FP/FN derived from raw events against
+    # per-scenario ground truth (see runner._ground_truth), not only ASR/bfp
+    # proxies. Pinned on seed 1; the determinism invariant covers seeds 1-3.
+    rows = run_benchmark()
+    by = {(r["scenario"], r["seed"]): r for r in rows}
+
+    t1 = by[("t1", 1)]
+    assert t1["gt"] == 12
+    assert t1["tp"] == {"mismatch": 12, "flowgraph": 12, "similarity": 12}
+    assert t1["fp"] == {"similarity": 1}  # shared row: (b) is scope-blind (doc.)
+    assert t1["fn"] == {"mismatch": 0, "flowgraph": 0, "similarity": 0}
+
+    t2 = by[("t2", 1)]
+    assert t2["gt"] == 1
+    assert t2["tp"] == {"mismatch": 1, "flowgraph": 1, "similarity": 1}
+    assert t2["fp"] == {}
+    assert t2["fn"] == {"mismatch": 0, "flowgraph": 0, "similarity": 0}
+
+    t3 = by[("t3", 1)]
+    assert t3["gt"] == 1  # relabeled row only (erase row not scanned by alpha)
+    assert t3["tp"] == {"similarity": 1}  # (a)/(c) cannot see relabeling
+    assert t3["fn"] == {"mismatch": 1, "flowgraph": 1, "similarity": 0}
+
+    t4 = by[("t4", 1)]
+    assert t4["gt"] == 3  # alpha's fragments composing gamma's secret
+    assert t4["tp"] == {}
+    assert t4["fn"] == {"mismatch": 3, "flowgraph": 3, "similarity": 3}  # AC7
+
+    for sc in ("correct", "benign"):  # no unauthorized flow (AC4/AC2)
+        r = by[(sc, 1)]
+        assert r["gt"] == 0 and r["tp"] == {}
+    assert by[("benign", 1)]["fp"] == {"similarity": 1}  # twins = measured FP
+
+    # determinism invariant: the per-signal classification must be identical
+    # across seeds 1-3 (fixture is seed-deterministic)
+    for sc in ("t1", "t2", "t3", "t4", "correct", "benign"):
+        base = tuple(by[(sc, 1)][k] for k in ("tp", "fp", "fn"))
+        for s in (2, 3):
+            assert tuple(by[(sc, s)][k] for k in ("tp", "fp", "fn")) == base, (sc, s)
