@@ -5,7 +5,7 @@ import pathlib
 
 import pytest
 
-from csmg.events import JsonlEventSink, NullSink
+from csmg.events import MAX_SPAN_LEN, JsonlEventSink, NullSink
 from csmg.types import SENSOR_VERSION, FlowEvent, SignalVerdict
 
 
@@ -50,6 +50,47 @@ def test_jsonl_sink_guard_refuses_content_smuggle():
     payload["content"] = "secret"  # simulate contract drift
     with pytest.raises(ValueError):
         JsonlEventSink._guard_never_content(payload)
+
+
+def test_evidence_allowlist_rejects_extra_key():
+    # Auditor finding (B2 hardening): content smuggled under any OTHER key
+    # name (snippet/matched_text/...) must be rejected structurally.
+    ev = _event()
+    payload = ev.to_dict()
+    payload["evidence"] = {"snippet": "full span of a memory chunk"}
+    with pytest.raises(ValueError):
+        JsonlEventSink._guard_evidence_shape(payload)
+
+
+def test_evidence_span_length_capped():
+    ev = _event()
+    payload = ev.to_dict()
+    payload["evidence"] = {"hash": "abc", "span": "x" * (MAX_SPAN_LEN + 1)}
+    with pytest.raises(ValueError):
+        JsonlEventSink._guard_evidence_shape(payload)
+
+
+def test_evidence_span_short_ok():
+    ev = _event()
+    payload = ev.to_dict()
+    payload["evidence"] = {"hash": "abc", "span": "x" * MAX_SPAN_LEN}
+    assert JsonlEventSink._guard_evidence_shape(payload) is payload
+
+
+def test_no_long_strings_blocks_detail_smuggle():
+    ev = _event()
+    payload = ev.to_dict()
+    payload["signals"][0]["detail"] = {"matched_text": "y" * 500}
+    with pytest.raises(ValueError):
+        JsonlEventSink._guard_no_long_strings(payload)
+
+
+def test_no_long_strings_blocks_origin_smuggle():
+    ev = _event()
+    payload = ev.to_dict()
+    payload["origin"] = {"note": "z" * 500}
+    with pytest.raises(ValueError):
+        JsonlEventSink._guard_no_long_strings(payload)
 
 
 def test_jsonl_sink_write_exposes_raw_payload_for_audit(tmp_path):
