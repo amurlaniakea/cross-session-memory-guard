@@ -22,7 +22,8 @@
 
 This adapter does NOT vendor nor include any Engram code. It is a thin,
 read-only driver against a local Engram SQLite database (default
-/home/sil/.engram/engram.db) used for dogfooding/tests in this environment.
+~/.engram/engram.db, overridable via CSMG_ENGRAM_DB) used for
+dogfooding/tests in this environment.
 Engram is treated exactly like any other backend (mem0, Letta, Zep,
 JSONL/SQLite): observed through the same ReadPort contract, never modified,
 never shipped as part of this repository's code. The DB is a local DATA
@@ -31,12 +32,24 @@ dependency for testing, not a library dependency.
 
 from __future__ import annotations
 
+import os
 import sqlite3
+from pathlib import Path
 
 from csmg.adapters import AdapterError, register
 from csmg.types import ChunkRead
 
 _METADATA_COLS = ("session_id", "type", "title", "project", "scope", "created_at")
+
+
+def default_db_path() -> str:
+    """Generic Engram DB location: env override or <home>/.engram/engram.db.
+
+    No local username is baked into the code (audit finding 2026-08-17):
+    Path.home() resolves for any operator, and CSMG_ENGRAM_DB or an explicit
+    adapter argument overrides the default when needed.
+    """
+    return os.environ.get("CSMG_ENGRAM_DB") or str(Path.home() / ".engram" / "engram.db")
 
 
 class EngramAdapter:
@@ -48,8 +61,8 @@ class EngramAdapter:
     reports provenance_mode="poor" (signal (a) inapplicable, declared).
     """
 
-    def __init__(self, db_path: str = "/home/sil/.engram/engram.db") -> None:
-        self._db = db_path
+    def __init__(self, db_path: str | None = None) -> None:
+        self._db = db_path or default_db_path()
 
     def _connect(self) -> sqlite3.Connection:
         try:
