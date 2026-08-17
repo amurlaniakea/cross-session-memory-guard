@@ -22,13 +22,14 @@
 
 import os
 import sqlite3
+from pathlib import Path
 
 import pytest
 
 from csmg.adapters import AdapterError
-from csmg.adapters.engram import EngramAdapter
+from csmg.adapters.engram import EngramAdapter, default_db_path
 
-REAL_DB = "/home/sil/.engram/engram.db"
+REAL_DB = default_db_path()
 
 
 def _make_db(tmp_path) -> str:
@@ -86,6 +87,16 @@ def test_bad_db_path_raises_adapter_error(tmp_path):
     a = EngramAdapter(str(tmp_path / "no-such.db"))
     with pytest.raises(AdapterError):
         a.list_chunks("alpha")
+
+
+def test_default_db_path_env_override(monkeypatch):
+    monkeypatch.setenv("CSMG_ENGRAM_DB", "/tmp/custom-engram.db")
+    assert default_db_path() == "/tmp/custom-engram.db"
+
+
+def test_default_db_path_generic_home(monkeypatch):
+    monkeypatch.delenv("CSMG_ENGRAM_DB", raising=False)
+    assert default_db_path() == str(Path.home() / ".engram" / "engram.db")
 
 
 def test_connection_is_readonly(tmp_path):
