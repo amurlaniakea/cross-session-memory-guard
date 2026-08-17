@@ -28,9 +28,16 @@ class AdapterError(RuntimeError):
 class ReadPort(Protocol):
     """Minimal read-only contract every memory backend must satisfy.
 
-    list_chunks(principal=None): ids of chunks visible to the principal; if
-    principal is None, unattributed/provenance-poor chunks (adapter-defined
-    semantics, never invented labels).
+    list_chunks(principal=None): MUST represent "what the engine's REAL
+    retrieval returns when queried as this principal" — OBSERVE the
+    retrieval path, do not reconstruct your own "correct" filtered query
+    (KI-9, hallazgo del auditor 2026-08-17). A schema-scoped listing that
+    pre-filters by principal makes signal (a) structurally inert: the
+    adapter would audit "are the labels correct?" instead of "did the real
+    read path filter?" (the security question). If a backend has no
+    observable retrieval path, the adapter must declare "schema-scoped
+    mode" (signal (a) inapplicable, provenance_mode noted per event) —
+    never pretend to observe what it does not.
     get_chunk(chunk_id): ChunkRead with engine-provided metadata.
     """
 
