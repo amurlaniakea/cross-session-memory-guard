@@ -1,9 +1,9 @@
 # RESEARCH — Base de evidencia del nicho
 
-Investigación de nicho realizada el **2026-08-17** (método
-`METODOS/Metodo_Encuentra_Nicho.md` del vault; checklist 6/6). Esta nota es la
-evidencia cruda que sostiene la Spec (SPEC §8) — cada afirmación cita su vía
-de verificación concreta.
+Investigación de nicho realizada el **2026-08-17** (método interno de
+validación de nichos del proyecto; checklist 6/6). Esta nota es la evidencia
+que sostiene la Spec (SPEC §8) — cada afirmación cita su vía de verificación
+concreta y apunta al raw versionado en `docs/evidence/` cuando existe.
 
 ## 1. El gap
 
@@ -13,9 +13,13 @@ sesión/usuario de forma no autorizada. Los proyectos existentes cubren
 integridad/procedencia write-time (`memlineage`, OWASP Agent Memory Guard,
 dent8, Obex) — nadie vigila la salida de datos por el camino de recuperación.
 
-## 2. Señal de gap (verificada por dos vías)
+## 2. Señal de gap — raw versionado
 
-`gh api` / `api.github.com` (2026-08-16/17), 5 términos exactos:
+`gh api search/repositories`, 2026-08-17. El **JSON crudo de las llamadas**
+(no solo el resumen) está versionado en
+[`docs/evidence/github_gap_2026-08-17.txt`](evidence/github_gap_2026-08-17.txt):
+una línea por query con `total_count` e items tal como los devolvió la API.
+Cada fila es verificable re-ejecutando la llamada.
 
 | Término | Resultados |
 |---|---|
@@ -24,13 +28,18 @@ dent8, Obex) — nadie vigila la salida de datos por el camino de recuperación.
 | `cross-tenant data leakage detection` | 0 |
 | `session data leakage detection agent` | 0 |
 | `memory provenance read-only monitor agent` | 0 |
-| Control: `agent persistent memory` | 4,632 (4,631 el 16-08; +1 delta de conteo vivo) |
+| Control: `agent persistent memory` | 4,632 (raw del run: 4,631; re-run del mismo día: 4,632 — delta de conteo vivo, no error) |
 | Control: `topic:llm-memory` | 435 |
 
-Repos adyacentes auditados (metadata por `gh api`, verificada por dos vías;
-READMEs leídos): **OWASP Agent Memory Guard** (125★, Apache-2.0, write-side
-ASI06), **aigis** (54★, Apache-2.0, firewall de tool-calls), **dent8** (4★,
-Apache-2.0, pushed 2026-07-30), **Obex** (0★, MIT, pushed 2026-07-22),
+Detalles honestos de la tabla: `memory exfiltration detector` no quedó
+incluida en el run original y se re-ejecutó el mismo día (0 resultados);
+queda anexada al archivo de evidencia con marca `RE-RUN`. Todos los demás
+conteos provienen de las líneas originales del raw.
+
+Repos adyacentes auditados (metadata por `gh api`; READMEs leídos): **OWASP
+Agent Memory Guard** (125★, Apache-2.0, write-side ASI06), **aigis** (54★,
+Apache-2.0, firewall de tool-calls), **dent8** (4★, Apache-2.0, pushed
+2026-07-30), **Obex** (0★, MIT, pushed 2026-07-22),
 **governed-agent-memory** (2★, sin licencia, pushed 2026-07-15),
 **agent-memory-lab** (0★, MIT, pushed 2026-08-12). **Ninguno cubre el ángulo
 read-side.** Controles de tamaño del espacio: agentmemory 27,111★; cognee
@@ -48,7 +57,11 @@ Ancla:
 Refuerzos (write-side/contexto/adyacentes):
 
 - 2608.06984 HarnessSafe (2026-08-07; cs.CR/cs.AI; benchmark de 328 casos en
-  7 familias de carriers persistentes).
+  7 familias de carriers persistentes). **Matiz de verificación:** este paper
+  se verificó ÚNICAMENTE vía `id_list` contra `export.arxiv.org`, SIN una
+  segunda fuente independiente que confirmara su existencia — a diferencia
+  del resto de la lista, que sí tuvo doble verificación por dos vías. Es
+  refuerzo secundario no bloqueante; el matiz queda explícito, no escondido.
 - 2606.26627 "Agents That Know Too Much" · 2601.06627 (Burn-After-Use +
   Secure Multi-Tenant) · 2605.01970 (Trojan Hippo) · 2608.01637 (Salami
   Attack) · 2606.17114 · 2605.08442 (inyecciones persistentes >97.5%) ·
@@ -57,6 +70,10 @@ Refuerzos (write-side/contexto/adyacentes):
   2606.29279 (consolidación mem0/LangMem) · 2607.27080 (MemSecBench) ·
   2606.04141 · 2604.05432.
 - Prior art propio: 2605.14421 (MemLineage — integridad write-time).
+
+Los IDs de arXiv son en sí mismos la referencia verificable: cualquiera
+puede consultarlos contra `export.arxiv.org` (búsqueda por `id_list`) sin
+depender de artefactos locales.
 
 ## 4. Hueco de estándar
 
@@ -74,10 +91,14 @@ producción sin un sensor de confidencialidad estándar.
   CrossSessionMemoryGuard = **read-time/confidencialidad** ("¿debería ESTE
   dato SALIR hacia ESTE principal?").
 
-## 6. Evidencia cruda
+## 6. Evidencia versionada en el repo
 
-- `/tmp/arxiv_xsession_out.txt` — barrido arXiv serial (6 queries, 31 KB).
-- `/tmp/gh_gap_xsession_raw.txt` — salidas crudas `gh api`.
-- `/tmp/harnesssafe_raw.xml` — XML crudo de 2608.06984 (3,155 bytes).
-- Obsidian: `Nichos e Investigacion/CrossSessionMemoryGuard_Analysis_Nichos.md`,
-  `CrossSessionMemoryGuard_Explicacion_Llana.md`, `Mapa_Nichos_Consolidado.md`.
+- `docs/evidence/github_gap_2026-08-17.txt` — salida cruda real de
+  `gh api search/repositories` (JSON verbatim por query: 5 términos de gap +
+  2 controles + barridos de sinónimos del mismo día, y el re-run anotado).
+  No depende de ninguna ruta local: el archivo es parte del repo y cada línea
+  es re-ejecutable contra la API pública.
+- Papers arXiv: la lista de IDs de la sección 3 es la referencia; no se
+  versiona ningún artefacto extra (la consulta `id_list` es la verificación).
+- La trazabilidad interna del proceso (rutas de artefactos locales, notas de
+  trabajo) vive fuera del repo y no es necesaria para auditar esta evidencia.
