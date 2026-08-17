@@ -61,6 +61,23 @@ def _principals_of(adapter: ReadPort) -> list[str]:
         return []
 
 
+def _attributed_chunks(adapter: ReadPort, principal: str | None) -> list[str]:
+    """Schema-scoped chunk ids for a principal (KI-8): who OWNS what.
+
+    Used for write-side rehydration and similarity references. Never for
+    detection: the observed path is adapter.list_chunks (KI-9). Falls back
+    to list_chunks when the adapter has no schema_chunks.
+    """
+    fn = getattr(adapter, "schema_chunks", None)
+    if fn is not None:
+        try:
+            return fn(principal) or []
+        except Exception:  # noqa: BLE001 - best-effort attribution
+            return []
+    ids = safe_call(f"list_chunks[{principal}]", adapter.list_chunks, principal)
+    return ids or []
+
+
 def run_audit(
     adapter: ReadPort,
     principal: str,
@@ -72,27 +89,31 @@ def run_audit(
     sink = sink or JsonlEventSink()
     result = AuditResult(principal=principal)
 
-    # KI-8 route 1: prime the write side from engine metadata. Unattributed
-    # chunks are skipped by FlowGraph.rehydrate itself (KI-8 hardening).
+    # KI-8 route 1: prime the write side from ENGINE metadata (schema-scoped
+    # attribution, NOT the observed retrieval view — a crossing retriever
+    # must not re-label who wrote what). Unattributed chunks are skipped by
+    # FlowGraph.rehydrate itself (KI-8 hardening).
     graph = FlowGraph()
     principals = _principals_of(adapter)
     writes: list[tuple[str, str]] = []
     for p in principals or [principal]:
-        ids = safe_call(f"list_chunks[{p}]", adapter.list_chunks, p) or []
-        writes.extend((cid, p) for cid in ids)
+        writes.extend((cid, p) for cid in _attributed_chunks(adapter, p))
     graph.rehydrate(writes)
 
-    # reference content of OTHER attributed principals (similarity baseline)
+    # reference content of OTHER attributed principals (similarity baseline),
+    # also schema-scoped: content belongs to its owner, regardless of what a
+    # (possibly broken) retriever serves.
     references: dict[str, str] = {}
     for p in principals:
         if p == principal:
             continue
-        for cid in safe_call(f"list_chunks[{p}]", adapter.list_chunks, p) or []:
+        for cid in _attributed_chunks(adapter, p):
             chunk = safe_call(f"get_chunk[{p}]", adapter.get_chunk, cid)
             if chunk is not None:
                 references[cid] = chunk.content
 
-    for cid in safe_call(f"list_chunks[{principal}]", adapter.list_chunks, principal) or []:
+    for cid in dict.fromkeys(  # dedupe: a retriever may return the same chunk twice
+        safe_call(f"list_chunks[{principal}]", adapter.list_chunks, principal) or []):
         chunk = safe_call(f"get_chunk[{principal}]", adapter.get_chunk, cid)
         if chunk is None:
             result.degraded += 1

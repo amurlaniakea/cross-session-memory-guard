@@ -16,10 +16,17 @@ from csmg.types import ChunkRead
 
 
 class JsonlAdapter:
-    """Read-only JSONL adapter. Each line: {"id", "content", "metadata"?}."""
+    """Read-only JSONL adapter. Lines: {"id", "content", "metadata"?}.
 
-    def __init__(self, path: str) -> None:
+    retriever (KI-9): optional callable(principal) -> list[chunk_id]
+    representing the ENGINE's real retrieval path; when injected, list_chunks
+    OBSERVES it. Without it, list_chunks falls back to schema-scoped listing
+    (declared mode: signal (a) is inert against this adapter).
+    """
+
+    def __init__(self, path: str, retriever=None) -> None:
         self._path = path
+        self._retriever = retriever
 
     def _records(self) -> list[dict]:
         try:
@@ -29,6 +36,14 @@ class JsonlAdapter:
             raise AdapterError(f"JsonlAdapter read failed: {e}") from e
 
     def list_chunks(self, principal: str | None = None) -> list[str]:
+        if self._retriever is not None:  # KI-9: observe the real path
+            return [str(i) for i in self._retriever(principal)]
+        return self.schema_chunks(principal)
+
+    def schema_chunks(self, principal: str | None = None) -> list[str]:
+        """Schema-scoped attribution (KI-8): who OWNS each chunk, bypassing
+        the retriever. Used for write-side rehydration and similarity
+        references — never for detection (KI-9)."""
         out = []
         for rec in self._records():
             md = rec.get("metadata") or {}
@@ -61,11 +76,17 @@ class SqliteGenericAdapter:
     Required columns: id, content. Optional metadata columns are detected
     via PRAGMA table_info and mapped to ChunkRead.metadata when present:
     principal_id, session_id, scope, ts.
+
+    retriever (KI-9): optional callable(principal) -> list[chunk_id]
+    representing the ENGINE's real retrieval path; when injected, list_chunks
+    OBSERVES it. Without it, list_chunks falls back to schema-scoped listing
+    (declared mode: signal (a) is inert against this adapter).
     """
 
-    def __init__(self, db_path: str, table: str) -> None:
+    def __init__(self, db_path: str, table: str, retriever=None) -> None:
         self._db = db_path
         self._table = table
+        self._retriever = retriever
 
     def _connect(self) -> sqlite3.Connection:
         try:
@@ -81,6 +102,14 @@ class SqliteGenericAdapter:
         return cols & {"principal_id", "session_id", "scope", "ts"}
 
     def list_chunks(self, principal: str | None = None) -> list[str]:
+        if self._retriever is not None:  # KI-9: observe the real path
+            return [str(i) for i in self._retriever(principal)]
+        return self.schema_chunks(principal)
+
+    def schema_chunks(self, principal: str | None = None) -> list[str]:
+        """Schema-scoped attribution (KI-8): who OWNS each chunk, bypassing
+        the retriever. Used for write-side rehydration and similarity
+        references — never for detection (KI-9)."""
         con = self._connect()
         try:
             cols = self._meta_cols(con)
@@ -94,11 +123,10 @@ class SqliteGenericAdapter:
                     (principal,),
                 ).fetchall()
             else:
-                # no principal column -> nothing can be attributed to a tenant
                 return []
             return [str(r["id"]) for r in rows]
         except sqlite3.Error as e:
-            raise AdapterError(f"SqliteGenericAdapter list failed: {e}") from e
+            raise AdapterError(f"SqliteGenericAdapter schema_chunks failed: {e}") from e
         finally:
             con.close()
 

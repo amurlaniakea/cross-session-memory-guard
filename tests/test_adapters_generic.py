@@ -58,3 +58,27 @@ def test_sqlite_adapter_without_principal_column(tmp_path):
     assert a.list_chunks("p1") == []  # nothing attributable (never invents)
     assert a.list_chunks(None) == ["1"]
     assert "principal_id" not in a.get_chunk("1").metadata
+
+
+def test_sqlite_adapter_with_retriever_observes_real_path(tmp_path):
+    # KI-9: when a retriever is injected (the engine's real retrieval path),
+    # list_chunks must return WHAT THE RETRIEVER returned — even if it
+    # crosses tenants (a broken filter must be observable, not corrected).
+    def crossing_retriever(principal):
+        if principal == "p1":
+            return ["1", "2"]  # the engine leaked p2's row into p1's view
+        return ["2"]
+
+    a = SqliteGenericAdapter(_sqlite(tmp_path), "mem", retriever=crossing_retriever)
+    assert a.list_chunks("p1") == ["1", "2"]  # observed, not schema-filtered
+    assert a.list_chunks("p2") == ["2"]
+
+
+def test_jsonl_adapter_with_retriever(tmp_path):
+    def r(principal):
+        if principal == "p1":
+            return ["j1", "j2"]  # crosses: j2 has no principal (schema-scoped would hide it)
+        return []
+
+    a = JsonlAdapter(_jsonl(tmp_path), retriever=r)
+    assert a.list_chunks("p1") == ["j1", "j2"]
