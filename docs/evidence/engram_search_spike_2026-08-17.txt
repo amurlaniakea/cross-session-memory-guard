@@ -1,0 +1,106 @@
+# Spike de enumeración — `engram search` (Fase 1, KI-10)
+
+**Fecha:** 2026-08-17 · **Binario:** engram v1.16.1 (`/usr/local/bin/engram`) ·
+**DB local:** `~/.engram/engram.db` (91 observations no borradas: 63 sin
+project + 28 en 13 projects) · **Modo:** SOLO lectura (únicamente
+`engram search` / `context` / `stats` / `projects list`, nunca comandos de
+escritura). Los contenidos locales (con API keys u otros datos personales)
+NO se versionan: este archivo registra conteos, ids y formato, no contenido.
+
+Objetivo (KI-10): ¿existe una forma de **listar todo lo visible para un
+principal** con la vía real de recuperación, o solo "buscar por relevancia"?
+
+## 1. Comportamiento observado del motor
+
+| Sonda | Resultado |
+|---|---|
+| `engram search` (sin query) | `error: search query is required` |
+| `engram search ""` | `error: search query is required` |
+| `engram search "*"` | `No memories found for: "*"` |
+| `engram search "*:*"` / `"**"` / `"-"` | `No memories found` (sin escape FTS) |
+| `engram search "X" --limit N`, N ∈ 1..20 | respeta N |
+| `--limit 20` / `--limit 1000` / `--limit 5000` | **20 (cap duro)** |
+| `engram search "X"` (sin --limit) | 10 (default) |
+| `--project P` / `--scope S` / `--type T` | filtros aplican; no enumeran |
+| `engram --help` / `engram help search` | no existe flag de listado |
+| `engram search --help` | tratado como QUERY ("No memories found for --help") |
+
+## 2. Batería de queries amplias (28 queries, `--limit 1000`)
+
+Resultados por query (ids devueltos, cap 20 por query):
+
+| query | #ids | query | #ids |
+|---|---|---|---|
+| `de` | 20 | `hermes` | 10 |
+| `el` | 20 | `tars` | 20 |
+| `la` | 20 | `obs*`¹ | 0 |
+| `2026` | 20 | `sil` | 20 |
+| `proyecto` | 2 | `chat` | 18 |
+| `memoria` | 20 | `watchdog` | 4 |
+| `archivo` | 4 | `centinela` | 4 |
+| `sistema` | 20 | `clave` | 20 |
+| `datos` | 20 | `dato` | 0 |
+| `agente` | 18 | `nichos` | 3 |
+| `estado` | 4 | `devto` | 1 |
+| `analisis`² | 5 | `arxiv` | 10 |
+| `prueba` | 2 | `Kerr-Newman` | 1 |
+| `proyecto centinela` | 1 | `0` | 9 |
+
+¹ `observacion`; ² re-ejecutada como `analysis`.
+
+## 3. Cobertura real (unión de ids vs total DB = 91)
+
+| Batería | Queries | Unión | Cobertura | Faltantes |
+|---|---|---|---|---|
+| amplias genéricas | 15 | 80 | 87.9% | 11 (chats cortos, cita física, filas con vocabulario propio) |
+| + exóticas (`sil`, `chat`, `watchdog`, `0`, …) | 23 | 88 | 96.7% | 3 (`23` Kerr-Newman, `74` devto-analysis, `76` arxiv-analysis) |
+| + queries hechas con los términos de las filas que faltaban | 28 | 91 | **100%** | 0 |
+
+**Lectura honesta:** el 100% solo se alcanza cuando la batería incluye
+queries armadas con los TÉRMINOS PROPIOS de cada fila que faltaba — para
+llegar al 100% hay que saber ya qué filas existen y qué contienen (circular).
+Cualquier query individual devuelve como máximo 20 resultados de relevancia:
+las filas que matchean pero quedan fuera del top-20 de esa query son
+invisibles para ella. No existe ninguna query cuyo resultado sea "todo lo
+visible".
+
+## 4. Mapeo resultado → chunk_id
+
+**SÍ, el output expone el id de la fila `observations` directamente.** Formato:
+
+```
+Found N memories:
+
+[1] #71 (decision) — <titulo>
+    <contenido>
+    <fecha> | project: <p> | scope: <s>
+```
+
+El `#<id>` es el `id` de `observations` → parseo fiable con
+`^\[\d+\] #(\d+)`. (Contenidos reales omitidos por higiene de datos locales.)
+
+## 5. Coste por llamada
+
+- 1 llamada: ~0.51 s. 16 llamadas de la batería: ~10.1 s total (~0.6 s/llamada).
+- Sin rate limit observado (binario local; la API HTTP local no se usó).
+- Ruido: banner "Update available: 1.16.1 -> 1.20.0" en stdout de TODAS las
+  llamadas (hay que filtrarlo al parsear).
+
+## 6. Alternativas evaluadas (ninguna enumeración)
+
+- `engram context <project>`: resumen de sesiones recientes (conteos), no ids.
+- `engram stats` / `engram projects list`: conteos (91 obs; obs por project),
+  no ids de chunks.
+- `engram export`: exporta TODO a un fichero JSON (no filtra por project; es
+  un volcado de datos — descartado como vía de detección por principio
+  read-only del sensor y por exponer todo el contenido).
+
+## 7. Conclusión (Fase 1)
+
+**No existe forma fiable de enumerar con `engram search`** — es un motor de
+búsqueda por relevancia con cap duro de 20 resultados, sin flag de listado,
+que rechaza query vacía y comodines. La cobertura es función del conjunto de
+queries elegido y solo llega al 100% conociendo de antemano los términos de
+cada fila. Según KI-10/KI-9: límite **estructural del motor** → la Fase 2
+(reimplementar `list_chunks` sobre `engram search`) NO se ejecuta; el
+adaptador Engram permanece schema-scoped. Ver KNOWN_ISSUES.md.
