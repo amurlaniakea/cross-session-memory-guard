@@ -61,6 +61,20 @@ class EngramAdapter:
         finally:
             con.close()
 
+    def list_principals(self) -> list[str]:
+        """Attributed principals (non-empty project values, non-deleted rows)."""
+        con = self._connect()
+        try:
+            rows = con.execute(
+                "SELECT DISTINCT project FROM observations"
+                " WHERE project IS NOT NULL AND project != '' AND deleted_at IS NULL"
+            ).fetchall()
+            return [r["project"] for r in rows]
+        except sqlite3.Error as e:
+            raise AdapterError(f"Engram list_principals failed: {e}") from e
+        finally:
+            con.close()
+
     def get_chunk(self, chunk_id: str) -> ChunkRead:
         con = self._connect()
         try:

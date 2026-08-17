@@ -36,6 +36,14 @@ class JsonlAdapter:
                 out.append(str(rec["id"]))
         return out
 
+    def list_principals(self) -> list[str]:
+        seen: list[str] = []
+        for rec in self._records():
+            pid = (rec.get("metadata") or {}).get("principal_id")
+            if pid and pid not in seen:
+                seen.append(pid)
+        return seen
+
     def get_chunk(self, chunk_id: str) -> ChunkRead:
         for rec in self._records():
             if str(rec["id"]) == str(chunk_id):
@@ -91,6 +99,21 @@ class SqliteGenericAdapter:
             return [str(r["id"]) for r in rows]
         except sqlite3.Error as e:
             raise AdapterError(f"SqliteGenericAdapter list failed: {e}") from e
+        finally:
+            con.close()
+
+    def list_principals(self) -> list[str]:
+        con = self._connect()
+        try:
+            if "principal_id" not in self._meta_cols(con):
+                return []
+            rows = con.execute(
+                f'SELECT DISTINCT principal_id FROM "{self._table}"'
+                " WHERE principal_id IS NOT NULL AND principal_id != ''"
+            ).fetchall()
+            return [r["principal_id"] for r in rows]
+        except sqlite3.Error as e:
+            raise AdapterError(f"SqliteGenericAdapter list_principals failed: {e}") from e
         finally:
             con.close()
 

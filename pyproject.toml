@@ -9,6 +9,10 @@ description = "Read-only cross-session memory exfiltration guard for multi-tenan
 requires-python = ">=3.11"
 license = "AGPL-3.0-or-later"
 authors = [{ name = "Pedro Sordo Martínez", email = "amurlaniakea@gmail.com" }]
+dependencies = ["typer>=0.12"]
+
+[project.scripts]
+csmg = "csmg.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
