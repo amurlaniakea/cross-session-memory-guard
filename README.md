@@ -1,6 +1,7 @@
 # CrossSessionMemoryGuard
 
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
+[![CI](https://github.com/amurlaniakea/cross-session-memory-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/amurlaniakea/cross-session-memory-guard/actions/workflows/ci.yml)
 
 Guard de exfiltración de memoria cross-session para agentes LLM multi-tenant:
 un **sensor read-only** que observa si un agente con memoria persistente está
